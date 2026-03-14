@@ -1,0 +1,17 @@
+# Dependencies
+node_modules
+
+# Nuxt
+.nuxt
+.output
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Claude
+.claude
+
+# OS
+.DS_Store
