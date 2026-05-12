@@ -69,9 +69,61 @@ const formatWeekLabel = (weekKey: string) => {
   return `${monday.toLocaleDateString('fr-FR', opts)} – ${sunday.toLocaleDateString('fr-FR', opts)}`
 }
 
+// ─── Filtre période ──────────────────────────────────────────────────────────
+type Period = 'all' | 'month' | 'quarter' | 'year'
+
+const periodOptions = [
+  { label: 'Tout', value: 'all' as Period },
+  { label: 'Mois', value: 'month' as Period },
+  { label: 'Trimestre', value: 'quarter' as Period },
+  { label: 'Année', value: 'year' as Period },
+]
+
+const period = ref<Period>('all')
+const periodValue = ref<string>('')
+
+const monthLabel = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+}
+
+const availableValues = computed<{ label: string; value: string }[]>(() => {
+  const set = new Set<string>()
+  for (const s of sessions.value) {
+    const d = new Date(s.date + 'T00:00:00')
+    const y = d.getFullYear()
+    const m = d.getMonth() + 1
+    if (period.value === 'month') set.add(`${y}-${String(m).padStart(2, '0')}`)
+    else if (period.value === 'quarter') set.add(`${y}-Q${Math.floor((m - 1) / 3) + 1}`)
+    else if (period.value === 'year') set.add(String(y))
+  }
+  const sorted = Array.from(set).sort().reverse()
+  return sorted.map(v => ({
+    value: v,
+    label: period.value === 'month' ? monthLabel(v) : v,
+  }))
+})
+
+watch(period, p => {
+  periodValue.value = p === 'all' ? '' : (availableValues.value[0]?.value ?? '')
+})
+
+const matchesPeriod = (s: Session) => {
+  if (period.value === 'all' || !periodValue.value) return true
+  const d = new Date(s.date + 'T00:00:00')
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  if (period.value === 'month') return periodValue.value === `${y}-${String(m).padStart(2, '0')}`
+  if (period.value === 'quarter') return periodValue.value === `${y}-Q${Math.floor((m - 1) / 3) + 1}`
+  if (period.value === 'year') return periodValue.value === String(y)
+  return true
+}
+
+const filteredSessions = computed(() => sessions.value.filter(matchesPeriod))
+
 const sessionsByWeek = computed(() => {
   const groups: Record<string, { sessions: Session[]; total: number }> = {}
-  for (const s of sessions.value) {
+  for (const s of filteredSessions.value) {
     const key = getWeekKey(s.date)
     if (!groups[key]) groups[key] = { sessions: [], total: 0 }
     groups[key].sessions.push(s)
@@ -89,9 +141,9 @@ const sessionsByWeek = computed(() => {
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 const stats = computed(() => ({
-  total: sessions.value.reduce((acc, s) => acc + s.duree_secondes, 0),
-  eleves: new Set(sessions.value.map(s => s.eleve_prenom)).size,
-  sessions: sessions.value.length,
+  total: filteredSessions.value.reduce((acc, s) => acc + s.duree_secondes, 0),
+  eleves: new Set(filteredSessions.value.map(s => s.eleve_prenom)).size,
+  sessions: filteredSessions.value.length,
 }))
 
 // ─── Initiales avatar ─────────────────────────────────────────────────────────
@@ -321,10 +373,25 @@ onMounted(fetchSessions)
 
       <!-- ── Historique ─────────────────────────────────────────────────────── -->
       <div class="space-y-3">
-        <div class="flex items-center gap-2 px-1">
+        <div class="flex flex-wrap items-center gap-2 px-1">
           <UIcon name="i-heroicons-calendar-days" class="text-muted" />
           <h2 class="text-highlighted font-semibold">Historique</h2>
-          <UBadge v-if="sessions.length" :label="String(sessions.length)" variant="subtle" color="neutral" size="sm" />
+          <UBadge v-if="filteredSessions.length" :label="String(filteredSessions.length)" variant="subtle" color="neutral" size="sm" />
+
+          <USelect
+            v-model="period"
+            :items="periodOptions"
+            size="xs"
+            class="w-28"
+          />
+          <USelect
+            v-if="period !== 'all'"
+            v-model="periodValue"
+            :items="availableValues"
+            size="xs"
+            class="w-40"
+            :disabled="!availableValues.length"
+          />
 
           <div class="ml-auto flex items-center gap-1.5">
             <UButton
@@ -362,9 +429,11 @@ onMounted(fetchSessions)
         </div>
 
         <!-- Empty -->
-        <div v-else-if="!sessions.length" class="bg-elevated rounded-2xl border border-default border-dashed p-16 text-center">
+        <div v-else-if="!filteredSessions.length" class="bg-elevated rounded-2xl border border-default border-dashed p-16 text-center">
           <UIcon name="i-heroicons-inbox" class="text-dimmed text-4xl mb-3" />
-          <p class="text-muted text-sm">Aucune session pour l'instant</p>
+          <p class="text-muted text-sm">
+            {{ sessions.length ? 'Aucune session pour cette période' : "Aucune session pour l'instant" }}
+          </p>
         </div>
 
         <!-- Semaines -->
