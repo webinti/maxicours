@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Session } from '~/composables/useSupabase'
+import type { Session } from '~/composables/useSessionsStore'
 
-// ─── Supabase + UI ───────────────────────────────────────────────────────────
-const supabase = useSupabase()
+// ─── Store local + UI ────────────────────────────────────────────────────────
+const store = useSessionsStore()
 const toast = useToast()
 const colorMode = useColorMode()
 
@@ -99,56 +99,96 @@ const initiales = (prenom: string) =>
   `${prenom[0] || ''}${prenom[1] || ''}`.toUpperCase()
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
-const fetchSessions = async () => {
+const fetchSessions = () => {
   loading.value = true
-  const { data, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .order('date', { ascending: false })
-    .order('heure_debut', { ascending: false })
-  if (error) toast.add({ title: 'Erreur chargement', description: error.message, color: 'error' })
-  else sessions.value = data as Session[]
+  try {
+    sessions.value = store.list()
+  } catch (e: any) {
+    toast.add({ title: 'Erreur chargement', description: e?.message, color: 'error' })
+  }
   loading.value = false
 }
 
-const saveSession = async () => {
+const saveSession = () => {
   if (!canSave.value) {
     toast.add({ title: 'Formulaire incomplet', color: 'warning' })
     return
   }
   saving.value = true
-  const { error } = await supabase.from('sessions').insert({
-    eleve_prenom: form.prenom.trim(),
-    date: form.date,
-    heure_debut: form.debut,
-    heure_fin: form.fin,
-    notes: form.notes.trim() || null,
-  })
-  if (error) toast.add({ title: 'Erreur', description: error.message, color: 'error' })
-  else {
+  try {
+    store.add({
+      eleve_prenom: form.prenom.trim(),
+      date: form.date,
+      heure_debut: form.debut,
+      heure_fin: form.fin,
+      notes: form.notes.trim() || null,
+    })
     toast.add({ title: 'Session enregistrée', icon: 'i-heroicons-check-circle', color: 'success' })
     resetForm()
-    await fetchSessions()
+    fetchSessions()
+  } catch (e: any) {
+    toast.add({ title: 'Erreur', description: e?.message, color: 'error' })
   }
   saving.value = false
 }
 
-const deleteSession = async (id: string) => {
-  const { error } = await supabase.from('sessions').delete().eq('id', id)
-  if (error) toast.add({ title: 'Erreur suppression', color: 'error' })
-  else {
+const deleteSession = (id: string) => {
+  try {
+    store.remove(id)
     sessions.value = sessions.value.filter(s => s.id !== id)
     toast.add({ title: 'Session supprimée', color: 'neutral' })
+  } catch {
+    toast.add({ title: 'Erreur suppression', color: 'error' })
   }
 }
 
 const resetForm = () => {
   form.prenom = ''
-  form.nom = ''
   form.date = new Date().toISOString().split('T')[0]
   form.debut = ''
   form.fin = ''
   form.notes = ''
+}
+
+// ─── Export / Import ──────────────────────────────────────────────────────────
+const fileInput = ref<HTMLInputElement | null>(null)
+
+const exportSessions = () => {
+  if (!sessions.value.length) {
+    toast.add({ title: 'Rien à exporter', color: 'warning' })
+    return
+  }
+  const blob = new Blob([store.exportJson()], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `eleve-tracker-${new Date().toISOString().split('T')[0]}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.add({ title: 'Export téléchargé', icon: 'i-heroicons-arrow-down-tray', color: 'success' })
+}
+
+const triggerImport = () => fileInput.value?.click()
+
+const onImportFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const { added, total } = store.importJson(text, 'merge')
+    fetchSessions()
+    toast.add({
+      title: 'Import réussi',
+      description: `${added} session(s) ajoutée(s) — ${total} au total`,
+      icon: 'i-heroicons-arrow-up-tray',
+      color: 'success',
+    })
+  } catch (err: any) {
+    toast.add({ title: 'Erreur import', description: err?.message, color: 'error' })
+  } finally {
+    input.value = ''
+  }
 }
 
 onMounted(fetchSessions)
@@ -285,6 +325,35 @@ onMounted(fetchSessions)
           <UIcon name="i-heroicons-calendar-days" class="text-muted" />
           <h2 class="text-highlighted font-semibold">Historique</h2>
           <UBadge v-if="sessions.length" :label="String(sessions.length)" variant="subtle" color="neutral" size="sm" />
+
+          <div class="ml-auto flex items-center gap-1.5">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              leading-icon="i-heroicons-arrow-up-tray"
+              @click="triggerImport"
+            >
+              Importer
+            </UButton>
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              leading-icon="i-heroicons-arrow-down-tray"
+              :disabled="!sessions.length"
+              @click="exportSessions"
+            >
+              Exporter
+            </UButton>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="application/json,.json"
+              class="hidden"
+              @change="onImportFile"
+            />
+          </div>
         </div>
 
         <!-- Loading -->
