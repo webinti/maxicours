@@ -10,6 +10,8 @@ const colorMode = useColorMode()
 const saving = ref(false)
 const loading = ref(true)
 const sessions = ref<Session[]>([])
+const editingId = ref<string | null>(null)
+const formCard = ref<HTMLElement | null>(null)
 
 const form = reactive({
   prenom: '',
@@ -168,14 +170,20 @@ const saveSession = () => {
   }
   saving.value = true
   try {
-    store.add({
+    const input = {
       eleve_prenom: form.prenom.trim(),
       date: form.date,
       heure_debut: form.debut,
       heure_fin: form.fin,
       notes: form.notes.trim() || null,
+    }
+    if (editingId.value) store.update(editingId.value, input)
+    else store.add(input)
+    toast.add({
+      title: editingId.value ? 'Session modifiée' : 'Session enregistrée',
+      icon: 'i-heroicons-check-circle',
+      color: 'success',
     })
-    toast.add({ title: 'Session enregistrée', icon: 'i-heroicons-check-circle', color: 'success' })
     resetForm()
     fetchSessions()
   } catch (e: any) {
@@ -188,13 +196,25 @@ const deleteSession = (id: string) => {
   try {
     store.remove(id)
     sessions.value = sessions.value.filter(s => s.id !== id)
+    if (editingId.value === id) resetForm()
     toast.add({ title: 'Session supprimée', color: 'neutral' })
   } catch {
     toast.add({ title: 'Erreur suppression', color: 'error' })
   }
 }
 
+const editSession = (s: Session) => {
+  editingId.value = s.id
+  form.prenom = s.eleve_prenom
+  form.date = s.date
+  form.debut = s.heure_debut
+  form.fin = s.heure_fin
+  form.notes = s.notes ?? ''
+  formCard.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const resetForm = () => {
+  editingId.value = null
   form.prenom = ''
   form.date = new Date().toISOString().split('T')[0]
   form.debut = ''
@@ -288,11 +308,15 @@ onMounted(fetchSessions)
       </div>
 
       <!-- ── Formulaire ─────────────────────────────────────────────────────── -->
-      <div class="bg-elevated rounded-2xl border border-default overflow-hidden">
+      <div
+        ref="formCard"
+        class="bg-elevated rounded-2xl border overflow-hidden scroll-mt-24"
+        :class="editingId ? 'border-primary ring-1 ring-primary/30' : 'border-default'"
+      >
         <!-- Titre -->
         <div class="px-6 py-4 border-b border-default flex items-center gap-2">
-          <UIcon name="i-heroicons-plus-circle" class="text-primary" />
-          <h2 class="text-highlighted font-semibold">Nouvelle session</h2>
+          <UIcon :name="editingId ? 'i-heroicons-pencil-square' : 'i-heroicons-plus-circle'" class="text-primary" />
+          <h2 class="text-highlighted font-semibold">{{ editingId ? 'Modifier la session' : 'Nouvelle session' }}</h2>
         </div>
 
         <div class="p-6 space-y-5">
@@ -358,7 +382,7 @@ onMounted(fetchSessions)
         <!-- Footer formulaire -->
         <div class="px-6 py-4 border-t border-default bg-default/40 flex items-center justify-between">
           <UButton variant="ghost" color="neutral" size="sm" @click="resetForm">
-            Réinitialiser
+            {{ editingId ? 'Annuler' : 'Réinitialiser' }}
           </UButton>
           <UButton
             :loading="saving"
@@ -366,7 +390,7 @@ onMounted(fetchSessions)
             leading-icon="i-heroicons-check"
             @click="saveSession"
           >
-            Enregistrer
+            {{ editingId ? 'Mettre à jour' : 'Enregistrer' }}
           </UButton>
         </div>
       </div>
@@ -462,6 +486,7 @@ onMounted(fetchSessions)
                 v-for="session in week.sessions"
                 :key="session.id"
                 class="px-5 py-3.5 flex items-center gap-4 group hover:bg-accented/30 transition-colors"
+                :class="{ 'bg-primary/5': editingId === session.id }"
               >
                 <!-- Avatar initiales -->
                 <div class="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
@@ -493,15 +518,25 @@ onMounted(fetchSessions)
                   <p class="text-dimmed text-xs font-mono">{{ session.duree_secondes.toLocaleString('fr-FR') }}s</p>
                 </div>
 
-                <!-- Supprimer -->
-                <UButton
-                  icon="i-heroicons-trash"
-                  variant="ghost"
-                  color="error"
-                  size="xs"
-                  class="opacity-0 group-hover:opacity-100 transition-opacity"
-                  @click="deleteSession(session.id)"
-                />
+                <!-- Actions -->
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  <UButton
+                    icon="i-heroicons-pencil-square"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    aria-label="Modifier"
+                    @click="editSession(session)"
+                  />
+                  <UButton
+                    icon="i-heroicons-trash"
+                    variant="ghost"
+                    color="error"
+                    size="xs"
+                    aria-label="Supprimer"
+                    @click="deleteSession(session.id)"
+                  />
+                </div>
               </div>
             </div>
           </div>

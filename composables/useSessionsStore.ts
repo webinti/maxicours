@@ -72,6 +72,21 @@ export const useSessionsStore = () => {
     return session
   }
 
+  const update = (id: string, input: NewSession): Session => {
+    const all = readAll()
+    const idx = all.findIndex(s => s.id === id)
+    if (idx === -1) throw new Error('Session introuvable')
+    const duree = parseTime(input.heure_fin) - parseTime(input.heure_debut)
+    const updated: Session = {
+      ...all[idx],
+      ...input,
+      duree_secondes: duree > 0 ? duree : 0,
+    }
+    all[idx] = updated
+    writeAll(all)
+    return updated
+  }
+
   const remove = (id: string) => {
     writeAll(readAll().filter(s => s.id !== id))
   }
@@ -123,5 +138,5 @@ export const useSessionsStore = () => {
     return { added: toAdd.length, total: merged.length }
   }
 
-  return { list, add, remove, clear, exportJson, importJson }
+  return { list, add, update, remove, clear, exportJson, importJson }
 }
