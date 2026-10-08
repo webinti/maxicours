@@ -304,6 +304,7 @@ onMounted(fetchSessions)
         <div class="bg-elevated rounded-xl border border-default p-5">
           <p class="text-muted text-xs font-medium uppercase tracking-wider mb-1">Temps total</p>
           <p class="text-primary text-3xl font-bold font-mono">{{ formatDuree(stats.total) }}</p>
+          <p class="text-dimmed text-xs font-mono mt-1">{{ stats.total.toLocaleString('fr-FR') }}s</p>
         </div>
       </div>
 
